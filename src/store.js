@@ -1,9 +1,6 @@
+import { sb } from './supabase.js';
 
-**7. `src/store.js`**
-
-```js
-export const VERSION = '1.0.0';
-export const CONFIG = { supabaseUrl: '', supabaseAnonKey: '' }; // paste your Supabase values here
+export const VERSION = '1.0.1';
 
 const KEY = 'bettermeV1';
 const blank = () => ({
@@ -13,38 +10,36 @@ const blank = () => ({
 });
 
 let state = blank();
-let remote = null;
+let uid = null;
+let timer = null;
 
 export const todayKey = (d = new Date()) => new Date(d.getTime() - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
 export const getState = () => state;
 export const bytes = () => new Blob([JSON.stringify(state)]).size;
 export const day = k => (state.days[k] ??= { tasks: [], reflection: '' });
 
-export async function load() {
-  try { state = { ...blank(), ...JSON.parse(localStorage.getItem(KEY) || '{}') }; }
+// Loads the signed-in user's cloud copy, falling back to the local cache if offline.
+export async function load(userId) {
+  uid = userId;
+  try { state = { ...blank(), ...JSON.parse(localStorage.getItem(`${KEY}:${uid}`) || '{}') }; }
   catch { state = blank(); }
 
-  if (CONFIG.supabaseUrl && CONFIG.supabaseAnonKey) {
-    try {
-      const { createClient } = await import('https://esm.sh/@supabase/supabase-js@2');
-      remote = createClient(CONFIG.supabaseUrl, CONFIG.supabaseAnonKey);
-      const { data } = await remote.from('better_me_state').select('data').eq('id', 'owner').maybeSingle();
-      if (data?.data) state = { ...blank(), ...data.data };
-    } catch (err) {
-      console.warn('Supabase unavailable, running local-only', err);
-      remote = null;
-    }
-  }
+  const { data, error } = await sb.from('better_me_state').select('data').eq('user_id', uid).maybeSingle();
+  if (error) console.warn('Sync unavailable, using local copy', error);
+  else if (data?.data) state = { ...blank(), ...data.data };
   return state;
 }
 
+// Saves locally at once, and pushes to Supabase after 400 ms of quiet.
 export function save() {
-  localStorage.setItem(KEY, JSON.stringify(state));
-  if (remote) {
-    remote.from('better_me_state')
-      .upsert({ id: 'owner', data: state, updated_at: new Date().toISOString() })
-      .then(() => {}, err => console.warn('Sync failed', err));
-  }
+  if (!uid) return;
+  localStorage.setItem(`${KEY}:${uid}`, JSON.stringify(state));
+  clearTimeout(timer);
+  timer = setTimeout(() => {
+    sb.from('better_me_state')
+      .upsert({ user_id: uid, data: state, updated_at: new Date().toISOString() })
+      .then(({ error }) => error && console.warn('Sync failed', error));
+  }, 400);
 }
 
 export function addTask(k, text, area, minutes) {

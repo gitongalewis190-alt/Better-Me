@@ -1,13 +1,17 @@
-import { CONFIG, VERSION, load, save, getState, day, todayKey, addTask, toggleTask, removeTask, moveOpen, bytes } from './src/store.js';
+import { VERSION, load, save, getState, day, todayKey, addTask, toggleTask, removeTask, moveOpen, bytes } from './src/store.js';
+import { requireUser, signOut } from './src/auth.js';
 import { AREAS, dayPct, streak, areaStats, weekdayStats, advice } from './src/analytics.js';
 import { promptFor } from './src/prompts.js';
 import { play, sounds } from './src/sound.js';
+import { monthGrid } from './src/calendar.js';
+import { momentumForecast, chronotype, capacity } from './src/algorithms.js';
 
 const $ = s => document.querySelector(s);
 const esc = (s = '') => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const sh = $('#sheet');
 const app = $('#view');
-let tab = 'home', viewDate = todayKey(), q = '', openDay = null;
+
+let tab = 'home', viewDate = todayKey(), q = '', calSel = todayKey(), calMonth = new Date();
 
 const fmtDate = k => new Date(k + 'T12:00').toLocaleDateString(undefined, { weekday: 'long', day: 'numeric', month: 'long' });
 
@@ -65,23 +69,44 @@ function progress() {
     const k = todayKey(dt), p = dayPct(s.days[k]);
     cells.push(`<i class="cell" style="--a:${p == null ? 0.12 : Math.max(0.2, p / 100)}" title="${k}${p == null ? '' : ' · ' + p + '%'}"></i>`);
   }
+  const f = momentumForecast();
+  const forecast = f.pct == null
+    ? `<p class="muted">${esc(f.note)}</p>`
+    : `<p style="font-size:34px;font-weight:700;margin:4px 0">${f.pct}%</p><p class="muted">${esc(f.note)}</p>`;
+  const rhythm = chronotype().note;
+  const caps = AREAS.slice(0, 3).map(a => `<p>${esc(capacity(a).note)}</p>`).join('');
+
   return `<section class="hero"><p class="eyebrow">Progress</p><h1>${streak()} day streak</h1><p class="sub">Last 35 days</p></section>
   <section class="card"><div class="heat">${cells.join('')}</div></section>
+  <section class="card"><h2>Forecast</h2>${forecast}</section>
+  <section class="card"><h2>Rhythm</h2><p>${esc(rhythm)}</p></section>
+  <section class="card advice"><h2>Capacity</h2>${caps}</section>
   <section class="card"><h2>By area</h2>${bars(areaStats())}</section>
   <section class="card"><h2>Weekday rhythm</h2>${bars(weekdayStats())}</section>
   <section class="card advice"><h2>Advice</h2>${advice().map(a => `<p>${esc(a)}</p>`).join('')}</section>`;
+}
+
+function dayDetail(k) {
+  const d = getState().days[k];
+  if (!d || !d.tasks.length) {
+    return `<p class="empty">Nothing planned for this day.</p><button class="ghost" data-plan="${k}">Plan this day</button>`;
+  }
+  return `<div class="card-h"><h2>${fmtDate(k)}</h2>${ring(dayPct(d))}</div>${d.tasks.map(t => taskRow(k, t)).join('')}`;
 }
 
 function history() {
   const s = getState();
   const keys = Object.keys(s.days).filter(k => s.days[k].tasks.length).sort().reverse();
   const items = keys.filter(k => !q || s.days[k].tasks.some(t => t.text.toLowerCase().includes(q)) || s.days[k].reflection.toLowerCase().includes(q));
-  const detail = openDay && s.days[openDay]
-    ? `<section class="card"><div class="card-h"><h2>${fmtDate(openDay)}</h2>${ring(dayPct(s.days[openDay]))}</div>${s.days[openDay].tasks.map(t => taskRow(openDay, t)).join('')}</section>`
-    : '';
+  const monthLabel = calMonth.toLocaleDateString(undefined, { month: 'long', year: 'numeric' });
+
   return `<section class="hero"><p class="eyebrow">History</p><h1>Your record</h1></section>
+  <section class="card">
+    <div class="card-h"><button class="ghost" style="width:auto" data-month="-1" aria-label="Previous month">‹</button><h2>${monthLabel}</h2><button class="ghost" style="width:auto" data-month="1" aria-label="Next month">›</button></div>
+    ${monthGrid(calMonth.getFullYear(), calMonth.getMonth())}
+  </section>
+  <section class="card">${dayDetail(calSel)}</section>
   <div class="card row"><input id="search" placeholder="Search tasks and reflections" value="${esc(q)}" autocomplete="off"></div>
-  ${detail}
   ${items.map(k => `<button class="card day" data-open="${k}"><span>${fmtDate(k)}</span><span class="muted">${s.days[k].tasks.filter(t => t.done).length}/${s.days[k].tasks.length}</span></button>`).join('') || '<p class="empty">No matching days.</p>'}`;
 }
 
@@ -95,7 +120,8 @@ function profileView() {
     <label>Bio<textarea name="bio" rows="3">${esc(p.bio)}</textarea></label>
     <label>Photo<input name="photo" type="file" accept="image/*"></label>
     <button class="primary">Save profile</button>
-  </form>`;
+  </form>
+  <button type="button" class="ghost" data-signout>Sign out</button>`;
 }
 
 const views = { home, progress, new: newView, history, profile: profileView };
@@ -122,7 +148,7 @@ function settingsSheet() {
     <label class="switch"><span>Sounds</span><input type="checkbox" data-sound ${s.settings.sound ? 'checked' : ''}></label>
     <p class="eyebrow" style="margin-top:18px">Storage</p>
     <div class="bar"><b style="width:${pct}%"></b></div>
-    <p class="muted">${(bytes() / 1024).toFixed(1)} KB used of 500 MB (Supabase free plan) · ${CONFIG.supabaseUrl ? 'Sync on' : 'Local only'}</p>
+    <p class="muted">${(bytes() / 1024).toFixed(1)} KB used of 500 MB (Supabase free plan) · Synced to your account</p>
     <p class="muted" style="margin-top:18px">Better Me v${VERSION}</p></div>`;
 }
 
@@ -179,14 +205,21 @@ document.addEventListener('click', e => {
     if (sh.classList.contains('open')) { sheet(''); play('cancel'); }
     return;
   }
+  if (t.closest('[data-signout]')) return signOut();
   if (t.closest('#settings')) return sheet(settingsSheet());
   if (t.closest('#print')) return sheet(printSheet());
   const tb = t.closest('[data-tab]');
   if (tb) { tab = tb.dataset.tab; return render(); }
   const rm = t.closest('[data-remove]');
   if (rm) { const [k, id] = rm.dataset.remove.split('|'); removeTask(k, id); play('cancel'); return render(); }
+  const mo = t.closest('[data-month]');
+  if (mo) { calMonth = new Date(calMonth.getFullYear(), calMonth.getMonth() + Number(mo.dataset.month), 1); return render(); }
+  const cal = t.closest('[data-cal]');
+  if (cal) { calSel = cal.dataset.cal; return render(); }
   const op = t.closest('[data-open]');
-  if (op) { openDay = op.dataset.open; return render(); }
+  if (op) { calSel = op.dataset.open; return render(); }
+  const pl = t.closest('[data-plan]');
+  if (pl) { viewDate = pl.dataset.plan; tab = 'new'; return render(); }
   const ro = t.closest('[data-rollover]');
   if (ro) { moveOpen(ro.dataset.rollover, ro.dataset.to); play('save'); return render(); }
   const th = t.closest('[data-theme-set]');
@@ -264,7 +297,9 @@ document.addEventListener('submit', async e => {
 });
 
 (async () => {
-  await load();
+  const user = await requireUser();
+  if (!user) return;
+  await load(user.id);
   sounds.on = getState().settings.sound;
   render();
 })();
