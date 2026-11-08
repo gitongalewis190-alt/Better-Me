@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#ffffff">
+  <title>Better Me</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="top">
+    <button id="print" class="icon-btn" aria-label="Print or export">Print</button>
+    <strong>Better Me</strong>
+    <button id="settings" class="icon-btn" aria-label="Settings">Settings</button>
+  </header>
+
+  <main id="view"></main>
+
+  <nav class="tabs" aria-label="Main">
+    <button data-tab="home">Home</button>
+    <button data-tab="progress">Progress</button>
+    <button data-tab="new">New SOP</button>
+    <button data-tab="history">History</button>
+    <button data-tab="profile" class="avatar-tab" aria-label="Profile"><span id="avatar"></span></button>
+  </nav>
+
+  <div id="sheet" class="sheet"></div>
+
+  <script type="module" src="app.js"></script>
+  <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js');</script>
+</body>
+</html>
