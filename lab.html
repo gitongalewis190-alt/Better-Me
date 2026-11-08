@@ -6,47 +6,51 @@
   <meta name="theme-color" content="#fbfaf7">
   <title>Lab · Better Me</title>
   <style>
-    :root{--bg:#fbfaf7;--card:#ffffff;--ink:#1d1d1f;--mut:#8a8680;--ok:#c96442;--line:#e9e4da;color-scheme:light}
-    @media (prefers-color-scheme:dark){:root{--bg:#141412;--card:#1d1c19;--ink:#f3efe8;--mut:#9a958c;--line:#2c2a25;color-scheme:dark}}
+    :root{--bg:#fbfaf7;--card:#ffffff;--ink:#1d1d1f;--mut:#5c5a54;--ok:#c96442;--line:#e6e1d6;color-scheme:light}
+    @media (prefers-color-scheme:dark){:root{--bg:#141412;--card:#1d1c19;--ink:#f3efe8;--mut:#aca79c;--line:#2c2a25;color-scheme:dark}}
     *{box-sizing:border-box}
     html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif}
     body{min-height:100vh;display:grid;place-items:center;padding:calc(env(safe-area-inset-top) + 24px) 20px calc(env(safe-area-inset-bottom) + 24px)}
-    .card{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:24px;padding:28px}
+    .card{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:26px;padding:28px;box-shadow:0 12px 40px rgba(0,0,0,.06);animation:rise .45s cubic-bezier(.2,.8,.2,1) both}
+    @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
     .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
-    .back{color:var(--mut);text-decoration:none;font-size:22px;line-height:1;padding:4px}
-    h1{margin:0;font-size:28px;font-weight:600;letter-spacing:-.02em}
-    .seg{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border-radius:12px;padding:3px;margin-bottom:20px}
-    .seg button{border:0;background:none;padding:9px;border-radius:10px;cursor:pointer;color:var(--mut);font:inherit;font-size:15px}
-    .seg button.on{background:var(--card);color:var(--ink);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+    .back{color:var(--mut);text-decoration:none;font-size:24px;line-height:1;padding:4px}
+    h1{margin:0;font-size:28px;font-weight:800;letter-spacing:-.02em}
+    .seg{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border-radius:14px;padding:4px;margin-bottom:20px}
+    .seg button{border:0;background:none;padding:10px;border-radius:11px;cursor:pointer;color:var(--mut);font:inherit;font-size:15px;font-weight:600}
+    .seg button.on{background:var(--card);color:var(--ink);font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,.08)}
     form{display:grid;gap:12px}
     input{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:14px}
     input:focus{outline:2px solid var(--ok);outline-offset:0;border-color:transparent}
-    .primary{margin-top:6px;border:0;background:var(--ink);color:var(--bg);border-radius:999px;padding:14px;font:inherit;font-weight:600;font-size:16px;cursor:pointer}
+    .primary{margin-top:6px;border:0;background:var(--ink);color:var(--bg);border-radius:999px;padding:15px;font:inherit;font-weight:800;font-size:16px;cursor:pointer}
     .primary:disabled{opacity:.5;cursor:default}
+    .link{justify-self:center;border:0;background:none;color:var(--ok);font:inherit;font-weight:700;cursor:pointer;padding:6px}
     #msg{min-height:1.5em;margin:4px 0 0;color:var(--mut);font-size:14px;text-align:center}
+    #msg.ok{color:var(--ok);font-weight:700}
   </style>
 </head>
 <body>
   <main class="card">
     <div class="top">
       <a class="back" href="index.html" aria-label="Back to home">‹</a>
-      <h1>Lab</h1>
-      <span style="width:22px"></span>
+      <h1 id="title">Sign in</h1>
+      <span style="width:24px"></span>
     </div>
     <div class="seg" role="tablist">
-      <button id="m-in" class="on" type="button">Sign in</button>
-      <button id="m-up" type="button">Create account</button>
+      <button id="m-in" class="on" type="button" role="tab" aria-selected="true">Sign in</button>
+      <button id="m-up" type="button" role="tab" aria-selected="false">Create account</button>
     </div>
     <form id="f" novalidate>
-      <input name="email" type="email" required placeholder="Email" autocomplete="email">
-      <input name="password" type="password" required minlength="6" placeholder="Password" autocomplete="current-password">
+      <input name="email" type="email" required placeholder="Email" autocomplete="email" aria-label="Email">
+      <input name="password" type="password" required minlength="6" placeholder="Password" autocomplete="current-password" aria-label="Password">
       <button id="go" class="primary" type="submit">Sign in</button>
-      <p id="msg" role="status"></p>
+      <button id="forgot" class="link" type="button">Forgot password?</button>
+      <p id="msg" role="status" aria-live="polite"></p>
     </form>
   </main>
 
   <script type="module">
-    import { currentUser, signIn, signUp } from './src/auth.js';
+    import { currentUser, signIn, signUp, resetPassword, friendlyError } from './src/auth.js';
 
     if (await currentUser()) location.replace('app.html');
 
@@ -59,13 +63,30 @@
       mode = m;
       document.getElementById('m-in').classList.toggle('on', m === 'in');
       document.getElementById('m-up').classList.toggle('on', m === 'up');
+      document.getElementById('m-in').setAttribute('aria-selected', m === 'in');
+      document.getElementById('m-up').setAttribute('aria-selected', m === 'up');
+      document.getElementById('title').textContent = m === 'in' ? 'Sign in' : 'Create account';
       go.textContent = m === 'in' ? 'Sign in' : 'Create account';
       f.password.autocomplete = m === 'in' ? 'current-password' : 'new-password';
       msg.textContent = '';
+      msg.className = '';
     }
 
     document.getElementById('m-in').onclick = () => setMode('in');
     document.getElementById('m-up').onclick = () => setMode('up');
+
+    document.getElementById('forgot').onclick = async () => {
+      const email = f.email.value.trim();
+      if (!email) { msg.textContent = 'Enter your email above first.'; return; }
+      try {
+        await resetPassword(email);
+        msg.className = 'ok';
+        msg.textContent = 'Check your email for a reset link.';
+      } catch (err) {
+        msg.className = '';
+        msg.textContent = friendlyError(err);
+      }
+    };
 
     f.onsubmit = async e => {
       e.preventDefault();
@@ -73,7 +94,9 @@
       const email = f.email.value.trim();
       const password = f.password.value;
       go.disabled = true;
+      go.textContent = mode === 'in' ? 'Signing in…' : 'Creating…';
       msg.textContent = '';
+      msg.className = '';
       try {
         if (mode === 'in') {
           await signIn(email, password);
@@ -81,12 +104,13 @@
         } else {
           const { session } = await signUp(email, password);
           if (session) location.replace('app.html');
-          else msg.textContent = 'Check your email to confirm, then sign in.';
+          else { msg.className = 'ok'; msg.textContent = 'Check your email to confirm, then sign in.'; }
         }
       } catch (err) {
-        msg.textContent = err.message || 'Something went wrong. Try again.';
+        msg.textContent = friendlyError(err);
       } finally {
         go.disabled = false;
+        go.textContent = mode === 'in' ? 'Sign in' : 'Create account';
       }
     };
   </script>

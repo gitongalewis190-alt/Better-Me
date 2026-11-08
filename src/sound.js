@@ -1,5 +1,6 @@
 let ctx;
 export const sounds = { on: true };
+export const haptics = { on: true };
 
 function tone(freq, start, dur, vol = 0.06) {
   ctx ??= new (window.AudioContext || window.webkitAudioContext)();
@@ -14,7 +15,11 @@ function tone(freq, start, dur, vol = 0.06) {
   o.stop(t0 + dur + 0.02);
 }
 
+const PATTERNS = { save: [10], complete: [12, 40, 12], cancel: [22] };
+
+// Plays the sound and the haptic together. Haptics only fire on devices that support them.
 export function play(kind) {
+  if (haptics.on && navigator.vibrate) navigator.vibrate(PATTERNS[kind] || 10);
   if (!sounds.on) return;
   try {
     if (kind === 'save') { tone(660, 0, 0.12); tone(880, 0.08, 0.18); }

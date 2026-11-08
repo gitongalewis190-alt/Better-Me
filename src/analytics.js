@@ -1,6 +1,4 @@
-import { getState, todayKey } from './store.js';
-
-export const AREAS = ['Academic', 'Personal Intelligence', 'Monetization', 'Reflection'];
+import { getState, getAreas, todayKey } from './store.js';
 
 export function dayPct(d) {
   if (!d || !d.tasks.length) return null;
@@ -21,9 +19,15 @@ export function streak() {
   return n;
 }
 
+export function lastKeys(n = 7) {
+  const out = [];
+  for (let i = 0; i < n; i++) { const d = new Date(); d.setDate(d.getDate() - i); out.push(todayKey(d)); }
+  return out;
+}
+
 export function areaStats() {
   const all = Object.values(getState().days).flatMap(d => d.tasks);
-  return AREAS.map(name => {
+  return getAreas().map(name => {
     const ts = all.filter(t => t.area === name);
     return { name, n: ts.length, pct: ts.length ? Math.round(100 * ts.filter(t => t.done).length / ts.length) : null };
   });
@@ -39,6 +43,39 @@ export function weekdayStats() {
   return names.map((name, i) => ({
     name,
     pct: buckets[i].length ? Math.round(buckets[i].reduce((a, b) => a + b, 0) / buckets[i].length) : null
+  }));
+}
+
+export function weekSummary() {
+  const s = getState();
+  let planned = 0, done = 0;
+  const byArea = {};
+  for (const k of lastKeys(7)) {
+    const d = s.days[k];
+    if (!d) continue;
+    for (const t of d.tasks) {
+      planned++;
+      if (t.done) { done++; byArea[t.area] = (byArea[t.area] || 0) + 1; }
+    }
+  }
+  const best = Object.entries(byArea).sort((a, b) => b[1] - a[1])[0];
+  return { planned, done, pct: planned ? Math.round(100 * done / planned) : null, best: best ? best[0] : null, streak: streak() };
+}
+
+// Minutes completed this week per category, against the weekly goal set in Settings.
+export function goalProgress() {
+  const s = getState();
+  const minutes = {};
+  for (const k of lastKeys(7)) {
+    const d = s.days[k];
+    if (!d) continue;
+    for (const t of d.tasks) if (t.done) minutes[t.area] = (minutes[t.area] || 0) + (t.spent || t.minutes || 0);
+  }
+  return getAreas().filter(a => s.goals[a] > 0).map(a => ({
+    name: a,
+    done: minutes[a] || 0,
+    goal: s.goals[a],
+    pct: Math.min(100, Math.round(100 * (minutes[a] || 0) / s.goals[a]))
   }));
 }
 
