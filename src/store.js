@@ -1,6 +1,6 @@
 import { sb } from './supabase.js';
 
-export const VERSION = '1.4.0';
+export const VERSION = '1.5.0';
 const KEY = 'bettermeV1';
 const DEFAULT_AREAS = ['Academic', 'Personal Intelligence', 'Monetization', 'Reflection'];
 
@@ -14,6 +14,7 @@ const blank = () => ({
   appliedTpl: {},
   lastReminder: '',
   onboarded: false,
+  printLog: [],
   days: {},
   updatedAt: null
 });
@@ -33,6 +34,31 @@ export const getAreas = () => state.areas;
 export const bytes = () => new Blob([JSON.stringify(state)]).size;
 export const day = k => (state.days[k] ??= { tasks: [], reflection: '' });
 
+const HHMM = /^\d{2}:\d{2}$/;
+const DEFAULT_MINUTES = 30;
+
+// Older tasks have no status. Give them one so every task follows the same lifecycle.
+const LEGACY = { planned: 'scheduled', review: 'waiting_review', notdone: 'missed', paused: 'running', scheduled: 'scheduled', running: 'running', waiting_review: 'waiting_review', done: 'done', missed: 'missed', pushed: 'pushed' };
+const STATUSES = ['scheduled', 'running', 'waiting_review', 'done', 'missed', 'pushed'];
+const statusOf = (raw, done) => (STATUSES.includes(raw) ? raw : LEGACY[raw]) || (done ? 'done' : 'scheduled');
+
+function migrateTask(t) {
+  const done = !!t.done;
+  return {
+    ...t, minutes: Number(t.minutes) || 0, spent: Number(t.spent) || 0,
+    startTime: t.startTime || '', endTime: t.endTime || '', done,
+    status: statusOf(t.status, done), runStart: t.runStart ?? null
+  };
+}
+
+function migrateDays(days) {
+  const out = {};
+  for (const [k, d] of Object.entries(days)) {
+    out[k] = { reflection: d?.reflection || '', tasks: (d?.tasks || []).map(migrateTask) };
+  }
+  return out;
+}
+
 function normalise(raw) {
   const b = blank();
   return {
@@ -43,7 +69,7 @@ function normalise(raw) {
     goals: { ...(raw?.goals || {}) },
     appliedTpl: { ...(raw?.appliedTpl || {}) },
     templates: Array.isArray(raw?.templates) ? raw.templates : [],
-    days: { ...(raw?.days || {}) }
+    days: migrateDays(raw?.days || {})
   };
 }
 
@@ -53,7 +79,8 @@ function normalise(raw) {
 function keyOf(r) {
   return JSON.stringify([
     r.day, r.text, r.area, Number(r.minutes) || 0, Number(r.spent) || 0, r.start_time || '',
-    !!r.done, r.done_at ? new Date(r.done_at).getTime() : null, Number(r.position) || 0, r.rolled_from || null
+    !!r.done, r.done_at ? new Date(r.done_at).getTime() : null, Number(r.position) || 0, r.rolled_from || null,
+    r.status || '', r.end_time || '', r.timer_started_at ? Date.parse(r.timer_started_at) : 0
   ]);
 }
 
@@ -65,8 +92,9 @@ function currentRows() {
       t.position = i;
       const row = {
         id: t.id, user_id: uid, day: k, text: t.text, area: t.area || '',
-        minutes: t.minutes || 0, spent: t.spent || 0, start_time: t.startTime || '',
-        done: !!t.done, done_at: t.doneAt || null, position: i, rolled_from: t.rolledFrom || null
+        minutes: Math.round(t.minutes || 0), spent: Math.round(t.spent || 0), start_time: t.startTime || '',
+        done: !!t.done, done_at: t.doneAt || null, position: i, rolled_from: t.rolledFrom || null,
+        status: t.status || 'scheduled', end_time: t.endTime || '', timer_started_at: t.runStart ? new Date(t.runStart).toISOString() : null
       };
       map.set(t.id, { row, key: keyOf(row), task: t });
     });
@@ -78,7 +106,8 @@ function taskFromRow(r) {
   return {
     id: r.id, text: r.text, area: r.area || '', minutes: r.minutes || 0, spent: r.spent || 0,
     startTime: r.start_time || '', done: !!r.done, doneAt: r.done_at || null,
-    rolledFrom: r.rolled_from || undefined, position: r.position || 0, updatedAt: r.updated_at
+    rolledFrom: r.rolled_from || undefined, position: r.position || 0, updatedAt: r.updated_at,
+    status: statusOf(r.status, r.done), endTime: r.end_time || '', runStart: r.timer_started_at ? Date.parse(r.timer_started_at) : null
   };
 }
 
@@ -254,26 +283,36 @@ export function save() {
 }
 
 export function setLastArea(a) { state.lastArea = a; save(); }
+export function saveProfile(f) {
+  const p = state.profile;
+  p.name = (f.name || '').trim();
+  p.age = (f.age || '').trim();
+  p.phone = (f.phone || '').trim();
+  p.bio = (f.bio || '').trim();
+  save();
+}
+
+export function logPrint(entry) {
+  const row = { id: crypto.randomUUID(), at: new Date().toISOString(), ...entry };
+  state.printLog = [row, ...(state.printLog || [])].slice(0, 200);
+  save();
+  if (uid) {
+    sb.from('better_me_prints').insert({
+      id: row.id, user_id: uid, doc: String(entry.doc || 'sops'), title: 'Better Me',
+      range_from: entry.from || null, range_to: entry.to || null,
+      options: { orientation: entry.orientation, font: entry.font, color: entry.color },
+      summary: ''
+    }).then(({ error }) => { if (error) console.warn('Print log not saved', error); });
+  }
+}
+
 export function setOnboarded(name) {
   state.profile.name = (name || '').trim() || state.profile.name;
   state.onboarded = true;
   save();
 }
 
-export function addTask(k, text, area, minutes, startTime = '') {
-  if (!text) return;
-  day(k).tasks.push({ id: crypto.randomUUID(), text, area, minutes: Number(minutes) || 0, startTime: startTime || '', spent: 0, done: false, doneAt: null });
-  save();
-}
 
-export function toggleTask(k, id) {
-  const t = day(k).tasks.find(x => x.id === id);
-  if (!t) return false;
-  t.done = !t.done;
-  t.doneAt = t.done ? new Date().toISOString() : null;
-  save();
-  return t.done;
-}
 
 export function addSpent(k, id, mins) {
   const t = day(k).tasks.find(x => x.id === id);
@@ -305,18 +344,6 @@ export function restoreTask(k, t) {
   save();
 }
 
-export function moveOpen(fromKey, toKey) {
-  const from = day(fromKey), target = day(toKey);
-  let moved = 0;
-  for (const t of from.tasks.filter(t => !t.done)) {
-    if (target.tasks.some(x => x.rolledFrom === t.id)) continue;
-    target.tasks.push({ ...t, id: crypto.randomUUID(), done: false, doneAt: null, spent: 0, rolledFrom: t.id });
-    moved++;
-  }
-  from.tasks = from.tasks.filter(t => t.done);
-  save();
-  return moved;
-}
 
 export function saveTemplate(name, k, schedule = []) {
   const tasks = day(k).tasks.map(({ text, area, minutes, startTime }) => ({ text, area, minutes, startTime: startTime || '' }));
@@ -334,7 +361,7 @@ export function deleteTemplate(id) {
 
 function pushTemplateTasks(tpl, k) {
   for (const t of tpl.tasks) {
-    day(k).tasks.push({ id: crypto.randomUUID(), text: t.text, area: t.area, minutes: t.minutes || 0, startTime: t.startTime || '', spent: 0, done: false, doneAt: null });
+    day(k).tasks.push({ id: crypto.randomUUID(), text: t.text, area: t.area, minutes: t.minutes || 0, startTime: t.startTime || '', endTime: '', spent: 0, done: false, doneAt: null, status: 'scheduled', runStart: null });
   }
   return tpl.tasks.length;
 }
@@ -413,4 +440,120 @@ export function exportCSV() {
     }
   }
   return rows.map(r => r.join(',')).join('\n');
+}
+
+// ---------- task lifecycle ----------
+// scheduled → running (at its start time) → waiting_review (minutes used up) → done | missed.
+// A task that is running with no timer start is paused. Moved tasks are removed from the day and copied to the next day.
+// Everything is computed from timestamps, so a phone that was asleep catches up when it opens.
+
+export const findTask = (k, id) => day(k).tasks.find(x => x.id === id);
+const instantOf = (k, hhmm) => new Date(`${k}T${hhmm}:00`).getTime();
+const nextKey = k => todayKey(new Date(new Date(k + 'T12:00').getTime() + 86400000));
+
+export function budgetMs(t, k) {
+  if (t.minutes > 0) return t.minutes * 60000;
+  if (HHMM.test(t.startTime || '') && HHMM.test(t.endTime || '')) {
+    const span = instantOf(k, t.endTime) - instantOf(k, t.startTime);
+    if (span > 0) return span;
+  }
+  return DEFAULT_MINUTES * 60000;
+}
+
+export function elapsedMs(t, now = Date.now()) {
+  return (t.spent || 0) * 60000 + (t.status === 'running' && t.runStart != null ? now - t.runStart : 0);
+}
+
+export function remainingMs(t, k, now = Date.now()) {
+  return Math.max(0, budgetMs(t, k) - elapsedMs(t, now));
+}
+
+export function addTask(k, text, area, minutes, startTime = '', endTime = '', startNow = false) {
+  text = (text || '').trim();
+  if (!text) return null;
+  const now = Date.now();
+  const start = startNow ? new Date(now).toTimeString().slice(0, 5) : (HHMM.test(startTime || '') ? startTime : '');
+  const t = {
+    id: crypto.randomUUID(), text, area: area || '', minutes: Number(minutes) || 0,
+    startTime: start, endTime: HHMM.test(endTime || '') ? endTime : '', spent: 0, done: false, doneAt: null,
+    status: startNow ? 'running' : 'scheduled', runStart: startNow ? now : null
+  };
+  day(k).tasks.push(t);
+  save();
+  return t;
+}
+
+export function tickTasks(now = Date.now()) {
+  let changed = false;
+  for (const [k, d] of Object.entries(state.days)) {
+    for (const t of d.tasks) {
+      if (t.status === 'scheduled' && HHMM.test(t.startTime || '')) {
+        const at = instantOf(k, t.startTime);
+        if (now >= at) { t.status = 'running'; t.runStart = at; changed = true; }
+      }
+      if (t.status === 'running' && t.runStart != null && elapsedMs(t, now) >= budgetMs(t, k)) {
+        t.spent = budgetMs(t, k) / 60000;
+        t.runStart = null;
+        t.status = 'waiting_review';
+        changed = true;
+      }
+    }
+  }
+  if (changed) save();
+  return changed;
+}
+
+export function startFocus(k, id, now = Date.now()) {
+  const t = findTask(k, id);
+  if (!t) return false;
+  const startable = t.status === 'scheduled' || (t.status === 'running' && t.runStart == null);
+  if (!startable) return false;
+  t.status = 'running';
+  t.runStart = now;
+  save();
+  return true;
+}
+
+export function pauseFocus(k, id, now = Date.now()) {
+  const t = findTask(k, id);
+  if (!t || t.status !== 'running' || t.runStart == null) return false;
+  t.spent = elapsedMs(t, now) / 60000;
+  t.runStart = null;
+  save();
+  return true;
+}
+
+export function toggleTask(k, id) {
+  const t = findTask(k, id);
+  if (!t) return false;
+  t.done = !t.done;
+  t.doneAt = t.done ? new Date().toISOString() : null;
+  t.status = t.done ? 'done' : 'waiting_review';
+  t.runStart = null;
+  save();
+  return t.done;
+}
+
+// Review outcome: done, not done (kept as a record), or moved to tomorrow with the same start time.
+export function reviewTask(k, id, outcome) {
+  const d = day(k), t = d.tasks.find(x => x.id === id);
+  if (!t) return false;
+  if (outcome === 'done') { t.status = 'done'; t.done = true; t.doneAt = new Date().toISOString(); t.runStart = null; }
+  else if (outcome === 'notdone') { t.status = 'missed'; t.done = false; t.doneAt = null; t.runStart = null; }
+  else if (outcome === 'tomorrow') {
+    d.tasks = d.tasks.filter(x => x.id !== id);
+    day(nextKey(k)).tasks.push({ ...t, status: 'scheduled', runStart: null, spent: 0, done: false, doneAt: null, rolledFrom: k });
+  }
+  save();
+  return true;
+}
+
+// Moves every task that is not done or missed to the next day, as scheduled tasks.
+export function moveOpen(fromKey, toKey) {
+  const from = day(fromKey), to = day(toKey);
+  const open = from.tasks.filter(t => !t.done && t.status !== 'missed');
+  from.tasks = from.tasks.filter(t => t.done || t.status === 'missed');
+  for (const t of open) to.tasks.push({ ...t, status: 'scheduled', runStart: null, spent: 0, rolledFrom: fromKey });
+  save();
+  return open.length;
 }
