@@ -1,4 +1,4 @@
-import { VERSION, load, save, getState, getAreas, day, todayKey, addTask, toggleTask, addSpent, moveTask, removeTask, restoreTask, moveOpen, renameArea, addArea, removeArea, setLastArea, setOnboarded, saveTemplate, deleteTemplate, applyTemplate, applyScheduled, setGoal, setReminder, markReminded, reloadRemote, bytes, onSync, exportJSON, exportCSV } from './src/store.js';
+import { VERSION, load, save, getState, getAreas, day, todayKey, addTask, saveProfile, logPrint, toggleTask, tickTasks, reviewTask, startFocus, pauseFocus, remainingMs, findTask, moveTask, removeTask, restoreTask, moveOpen, renameArea, addArea, removeArea, setLastArea, setOnboarded, saveTemplate, deleteTemplate, applyTemplate, applyScheduled, setGoal, setReminder, markReminded, reloadRemote, bytes, onSync, exportJSON, exportCSV } from './src/store.js';
 import { requireUser, signOut } from './src/auth.js';
 import { dayPct, streak, areaStats, weekdayStats, advice, weekSummary, goalProgress } from './src/analytics.js';
 import { promptFor } from './src/prompts.js';
@@ -29,7 +29,8 @@ const app = $('#view');
 const sh = $('#sheet');
 
 let tab = 'home', q = '', calSel = todayKey(), calMonth = new Date(), area = getAreas()[0], ready = false;
-let tm = null;   // active focus timer
+let tm = null;   // open focus sheet: { k, id }
+let pendingRender = false; // a render waiting until the person stops typing
 let drag = null; // active drag-to-reorder
 let swipe = null; // active swipe on a task row
 let pull = null;  // active pull-to-refresh
@@ -50,16 +51,26 @@ function ring(pct, size = 60) {
   return `<svg class="ring" width="${size}" height="${size}" viewBox="0 0 56 56" role="img" aria-label="${pct == null ? 'No tasks' : v + ' percent complete'}"><circle cx="28" cy="28" r="${r}" class="track"/><circle cx="28" cy="28" r="${r}" class="fill" stroke-dasharray="${c}" stroke-dashoffset="${c * (1 - v / 100)}"/><text x="28" y="32" text-anchor="middle">${pct == null ? '–' : v + '%'}</text></svg>`;
 }
 
-// Each row carries its day and id, so swipe and drag can find it.
+const STATUS_LABEL = { scheduled: 'Scheduled', running: 'In progress', waiting_review: 'Waiting for review', done: 'Done', missed: 'Not done', pushed: 'Moved to tomorrow' };
+const isPaused = t => t.status === 'running' && t.runStart == null;
+const labelOf = t => (isPaused(t) ? 'Paused' : STATUS_LABEL[t.status] || 'Scheduled');
+const fmtRemain = (t, k) => { const s = Math.ceil(remainingMs(t, k) / 1000); return `${pad(Math.floor(s / 60))}:${pad(s % 60)} left`; };
+
+// One task row. Its action and status follow its lifecycle.
 function taskRow(key, t) {
-  const time = t.startTime ? `<span class="time">${esc(t.startTime)}</span>` : '';
-  const spent = t.spent ? `<span class="spent">${t.spent}m focused</span>` : '';
-  const timer = t.done ? '' : `<button class="x timer-btn" data-timer="${key}|${t.id}" aria-label="Start focus timer for ${esc(t.text)}">${svg('timer', 18)}</button>`;
-  return `<div class="task${t.done ? ' done' : ''}" data-key="${key}" data-id="${t.id}">
+  const st = t.status || 'scheduled';
+  const sched = t.startTime ? `${esc(t.startTime)}${t.endTime ? '–' + esc(t.endTime) : ''}` : 'No time set';
+  const live = st === 'running' ? `<span class="live" data-live="${key}|${t.id}">${fmtRemain(t, key)}</span>` : '';
+  const spent = t.spent ? `<span class="spent">${Math.round(t.spent)}m focused</span>` : '';
+  let action = '';
+  if (st === 'waiting_review') action = `<button class="pill" data-review-open="${key}|${t.id}">Review</button>`;
+  else if (st === 'scheduled' || st === 'running') action = `<button class="x timer-btn" data-timer="${key}|${t.id}" aria-label="Open focus for ${esc(t.text)}">${svg('timer', 18)}</button>`;
+  return `<div class="task st-${st}${t.done ? ' done' : ''}" data-key="${key}" data-id="${t.id}">
     <button class="grip" type="button" data-grip="${key}|${t.id}" aria-label="Drag to reorder ${esc(t.text)}">⋮⋮</button>
     <label class="check"><input type="checkbox" data-toggle="${key}|${t.id}" ${t.done ? 'checked' : ''} aria-label="Complete ${esc(t.text)}"><span class="box"></span><span class="tx">${esc(t.text)}</span></label>
-    ${time}${spent}<span class="tag" style="--c:${colorFor(t.area)}">${esc(t.area)}</span>${timer}
-    <button class="x" data-remove="${key}|${t.id}" aria-label="Remove ${esc(t.text)}">×</button></div>`;
+    ${action}<button class="x" data-remove="${key}|${t.id}" aria-label="Remove ${esc(t.text)}">×</button>
+    <div class="meta"><span class="time">${sched}</span><span class="stat">${labelOf(t)}</span>${live}${spent}<span class="tag" style="--c:${colorFor(t.area)}">${esc(t.area)}</span></div>
+  </div>`;
 }
 
 function bars(rows, colored = true) {
@@ -105,19 +116,31 @@ function home() {
 
 function newView() {
   const tpls = getState().templates;
-  return `<header class="intro"><p class="kicker">Logging for ${fmtLong(todayKey())}</p><h1>New SOP</h1></header>
+  return `<header class="intro"><p class="kicker">Planning for ${fmtLong(todayKey())}</p><h1>New task</h1></header>
   ${tpls.length ? `<div class="tpl-row" role="group" aria-label="Templates">${tpls.map(t => `<button class="chip tpl" data-use-tpl="${t.id}">${esc(t.name)}</button>`).join('')}</div>` : ''}
-  <form id="newForm" class="card stack">
-    <label class="sr-only" for="newText">Task</label>
-    <input id="newText" name="text" class="big-input" required placeholder="What will you do?" autocomplete="off">
+  <form id="planForm" class="card stack">${planFields('')}</form>`;
+}
+
+// The same fields for the New tab, the quick-add shortcut sheet, and the template flow.
+function planFields(text) {
+  return `<label class="sr-only" for="planText">Task</label>
+    <input id="planText" name="text" class="big-input" placeholder="What will you do?" autocomplete="off" value="${esc(text)}">
     <p class="kicker" style="margin:4px 0 0">Category</p>
     ${chips()}
     <div class="two">
-      <label>Minutes<input name="minutes" type="number" min="0" inputmode="numeric" placeholder="30"></label>
-      <label>Start<input name="start" type="time"></label>
+      <label>Starts at<input name="start" type="time"></label>
+      <label>Finish by<input name="end" type="time"></label>
     </div>
-    <button class="primary" type="submit">Log it</button>
-  </form>`;
+    <label>Minutes to spend<input name="minutes" type="number" min="1" inputmode="numeric" placeholder="30" value="30"></label>
+    <p class="mut">The timer starts at the start time on its own. If you are away when it ends, the task waits for your review.</p>
+    <div class="field-row">
+      <button class="primary" type="submit" name="mode" value="plan">Plan task</button>
+      <button class="ghost" type="submit" name="mode" value="now">Start now</button>
+    </div>`;
+}
+
+function planSheet(text) {
+  return `<form id="planForm" class="sheet-card"><div class="row-between"><h2>Plan a task</h2><button type="button" class="ghost" data-close>Cancel</button></div>${planFields(text)}</form>`;
 }
 
 function progress() {
@@ -189,16 +212,13 @@ function render() {
     b.setAttribute('aria-current', on ? 'page' : 'false');
   });
   app.innerHTML = ready ? views[tab]() : skeleton();
-  app.classList.remove('enter');
-  void app.offsetWidth;
-  app.classList.add('enter');
   window.scrollTo({ top: 0 });
   $('#chips .on')?.scrollIntoView({ inline: 'center', block: 'nearest' });
 }
 
 // One place that opens or closes every sheet. Closing logs any focus time already spent.
 function sheet(html) {
-  if (!html && tm) logTimer();
+  if (!html) tm = null;
   sh.innerHTML = html;
   sh.classList.toggle('open', !!html);
   if (html) {
@@ -229,53 +249,71 @@ function download(name, text, type) {
 
 function go(t) { tab = t; sheet(''); render(); }
 
-// Focus timer. Runs from the task's planned minutes (25 if none). Time focused is saved to the task.
-function timerHtml() {
-  return `<div class="sheet-card timer" role="document"><p class="kicker">Focus</p><h2>${esc(tm.title)}</h2>
-    <div class="clock" id="clock" aria-live="off">${pad(Math.floor(tm.left / 60))}:${pad(tm.left % 60)}</div>
-    <div class="field-row"><button class="primary" data-timer-toggle>${tm.run ? 'Pause' : 'Start'}</button><button class="ghost" data-timer-finish>Finish task</button></div>
-    <p class="mut">Closing this sheet saves the time you focused.</p></div>`;
-}
-
-function startTimer(k, id) {
-  const t = day(k).tasks.find(x => x.id === id);
+// Focus sheet. It reads the task's own clock, so it survives reloads and sleep.
+function timerSheet(k, id) {
+  const t = findTask(k, id);
   if (!t) return;
-  const secs = (t.minutes || 25) * 60;
-  tm = { k, id, title: t.text, total: secs, left: secs, run: false, handle: null };
-  sheet(timerHtml());
-  toggleTimer();
+  tm = { k, id };
+  sheet(timerHtml(k, t));
 }
 
-function toggleTimer() {
-  if (!tm) return;
-  if (tm.run) { clearInterval(tm.handle); tm.run = false; }
-  else { tm.run = true; tm.handle = setInterval(tickTimer, 1000); }
-  const btn = document.querySelector('[data-timer-toggle]');
-  if (btn) btn.textContent = tm.run ? 'Pause' : 'Start';
+function timerHtml(k, t) {
+  const running = t.status === 'running' && !isPaused(t);
+  const actionable = t.status === 'scheduled' || t.status === 'running';
+  return `<div class="sheet-card timer" role="document"><p class="kicker">Focus · ${labelOf(t)}</p><h2>${esc(t.text)}</h2>
+    <div class="clock" id="clock" aria-live="off">${fmtRemain(t, k).replace(' left', '')}</div>
+    <p class="mut">${running ? 'Counting down. Closing this sheet keeps the timer running.' : 'Pausing keeps the time you have used.'}</p>
+    <div class="field-row">${actionable ? `<button class="primary" data-timer-toggle>${running ? 'Pause' : 'Start'}</button>` : ''}<button class="ghost" data-review-open="${k}|${t.id}">Review</button></div></div>`;
 }
 
-function tickTimer() {
+function findOpenTask() { return tm ? findTask(tm.k, tm.id) : null; }
+
+function toggleFocus() {
   if (!tm) return;
-  tm.left--;
-  if (tm.left <= 0) {
-    play('complete');
-    logTimer();
-    sh.innerHTML = '';
-    sh.classList.remove('open');
-    toast('Focus block complete');
-    render();
-    return;
-  }
-  const el = document.getElementById('clock');
-  if (el) el.textContent = `${pad(Math.floor(tm.left / 60))}:${pad(tm.left % 60)}`;
+  const t = findOpenTask();
+  if (!t) return;
+  if (t.status === 'running' && !isPaused(t)) pauseFocus(tm.k, tm.id);
+  else startFocus(tm.k, tm.id);
+  sheet(timerHtml(tm.k, findOpenTask()));
+  tm = { k: tm.k, id: tm.id };
+  render();
 }
 
-function logTimer() {
-  if (!tm) return;
-  clearInterval(tm.handle);
-  const used = Math.floor((tm.total - tm.left) / 60);
-  if (used > 0) addSpent(tm.k, tm.id, used);
-  tm = null;
+function reviewSheet(k, id) {
+  const t = findTask(k, id);
+  if (!t) return;
+  sheet(`<div class="sheet-card" role="document"><p class="kicker">Review</p><h2>${esc(t.text)}</h2>
+    <p class="mut">Did you finish it?</p>
+    <div class="field-row"><button class="primary" data-review="done|${k}|${id}">Done</button><button class="ghost" data-review="notdone|${k}|${id}">Not done</button></div>
+    <button class="pill" data-review="tomorrow|${k}|${id}">Not done, move to tomorrow</button></div>`);
+}
+
+function doReview(outcome, k, id) {
+  reviewTask(k, id, outcome);
+  sheet('');
+  play(outcome === 'done' ? 'complete' : 'cancel');
+  toast(outcome === 'done' ? 'Marked done' : outcome === 'tomorrow' ? 'Moved to tomorrow' : 'Marked not done');
+  render();
+}
+
+// Updates countdowns in place, so typing and scrolling are never interrupted.
+function updateLive() {
+  document.querySelectorAll('[data-live]').forEach(el => {
+    const [k, id] = el.dataset.live.split('|');
+    const t = findTask(k, id);
+    if (t) el.textContent = fmtRemain(t, k);
+  });
+  const c = document.getElementById('clock'), t = findOpenTask();
+  if (c && t && sh.classList.contains('open')) c.textContent = fmtRemain(t, tm.k).replace(' left', '');
+}
+
+const busy = () => sh.classList.contains('open') || ['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement?.tagName);
+
+// Runs every few seconds. Status changes re-render the list only when it is safe to.
+function liveTick() {
+  if (tickTasks()) pendingRender = true;
+  if (pendingRender && !busy()) { pendingRender = false; render(); }
+  updateLive();
 }
 
 function tplSheet() {
@@ -328,40 +366,47 @@ function searchSheet() {
     <div id="sresults" class="list">${results()}</div></div>`;
 }
 
+let settingsSection = null;
+const SETTINGS_ROWS = [
+  ['appearance', 'Appearance', s => (s.settings.theme === 'dark' ? 'Dark' : 'Light')],
+  ['categories', 'Categories', () => `${getAreas().length} areas`],
+  ['goals', 'Weekly goals', () => `${Object.values(getState().goals).filter(Boolean).length} set`],
+  ['templates', 'Templates', s => `${s.templates.length} saved`],
+  ['reminders', 'Reminders', s => s.settings.reminder || 'Off'],
+  ['app', 'Sounds and haptics', s => (s.settings.sound ? 'Sound on' : 'Sound off')],
+  ['data', 'Data and backup', () => 'Export'],
+  ['account', 'Account', () => 'Sign out']
+];
+
 function settingsSheet() {
+  settingsSection = null;
+  const s = getState();
+  return `<div class="sheet-card" role="document"><div class="row-between"><h2>Settings</h2><button class="ghost" data-close>Done</button></div>
+    <ul class="settings-list" role="list">${SETTINGS_ROWS.map(([id, label, value]) => `<li role="listitem"><button class="setting-row" data-settings-open="${id}"><span class="sl">${esc(label)}</span><span class="sv">${esc(String(value(s)))}</span><span class="chev" aria-hidden="true">›</span></button></li>`).join('')}</ul></div>`;
+}
+
+function settingsDetail(id) {
+  settingsSection = id;
   const s = getState();
   const kb = (bytes() / 1024).toFixed(1);
   const pct = Math.min(100, bytes() / (500 * 1024 * 1024) * 100).toFixed(2);
   const areas = getAreas().map((a, i) => `<div class="area-edit"><label class="sr-only" for="area-${i}">Category name</label><input id="area-${i}" type="text" value="${esc(a)}" data-area-name="${esc(a)}"><button class="ghost" data-area-rm="${i}">Remove</button></div>`).join('');
   const goals = getAreas().map((a, i) => `<label class="goal"><span>${esc(a)}</span><input id="goal-${i}" type="number" min="0" inputmode="numeric" placeholder="min/week" value="${s.goals[a] || ''}" data-goal="${esc(a)}"></label>`).join('');
   const tpls = s.templates.length ? s.templates.map(t => `<div class="area-edit"><span class="tpl-name">${esc(t.name)} · ${t.tasks.length} tasks${t.schedule?.length ? ' · ' + t.schedule.map(i => WEEKDAYS[i]).join(', ') : ''}</span><button class="ghost" data-tpl-rm="${t.id}">Delete</button></div>`).join('') : '<p class="mut">No templates yet. Save a day from Home.</p>';
-  return `<div class="sheet-card">
-    <div class="row-between"><h2>Settings</h2><button class="ghost" data-close>Done</button></div>
-    <p class="kicker">Appearance</p>
-    <div class="seg" role="group" aria-label="Theme"><button data-theme-set="light" class="${s.settings.theme === 'light' ? 'on' : ''}" aria-pressed="${s.settings.theme === 'light'}">Light</button><button data-theme-set="dark" class="${s.settings.theme === 'dark' ? 'on' : ''}" aria-pressed="${s.settings.theme === 'dark'}">Dark</button></div>
-    <p class="kicker">Categories</p>
-    ${areas}
-    <div class="field-row"><label class="sr-only" for="newArea">New category</label><input id="newArea" type="text" placeholder="New category"><button class="ghost" data-area-add>Add</button></div>
-    <p class="kicker">Weekly goals</p>
-    ${goals}
-    <p class="kicker">Templates</p>
-    ${tpls}
-    <p class="kicker">Reminders</p>
-    <label class="switch"><span>Daily reminder time</span><input type="time" value="${s.settings.reminder}" data-reminder aria-label="Daily reminder time"></label>
-    <button class="ghost" data-notify>Allow notifications</button>
-    <p class="mut">Reminders arrive while Better Me is installed and the phone allows them. On iPhone, add the app to your Home Screen first.</p>
-    <p class="kicker">App</p>
-    <label class="switch"><span>Sounds</span><input type="checkbox" data-sound ${s.settings.sound ? 'checked' : ''}></label>
-    <label class="switch"><span>Haptics</span><input type="checkbox" data-haptics ${s.settings.haptics ? 'checked' : ''}></label>
-    <div class="row-between"><span style="font-weight:700">Version</span><span class="mut">${VERSION}</span></div>
-    <p class="kicker">Data</p>
-    <div class="field-row"><button class="ghost" data-export-json>Export JSON</button><button class="ghost" data-export-csv>Export CSV</button></div>
-    <p class="kicker">Storage</p>
-    <div class="meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Storage used"><b style="width:${pct}%"></b></div>
-    <div class="row-between"><span style="font-weight:700">${kb} KB used</span><span class="mut">of 500 MB</span></div>
-    <button class="pill danger" data-signout>Sign out</button>
-  </div>`;
+  const body = {
+    appearance: `<h2>Appearance</h2><div class="seg" role="group" aria-label="Theme"><button data-theme-set="light" class="${s.settings.theme === 'light' ? 'on' : ''}" aria-pressed="${s.settings.theme === 'light'}">Light</button><button data-theme-set="dark" class="${s.settings.theme === 'dark' ? 'on' : ''}" aria-pressed="${s.settings.theme === 'dark'}">Dark</button></div>`,
+    categories: `<h2>Categories</h2>${areas}<div class="field-row"><label class="sr-only" for="newArea">New category</label><input id="newArea" type="text" placeholder="New category"><button class="ghost" data-area-add>Add</button></div>`,
+    goals: `<h2>Weekly goals</h2>${goals}`,
+    templates: `<h2>Templates</h2>${tpls}`,
+    reminders: `<h2>Reminders</h2><label class="switch"><span>Daily reminder time</span><input type="time" value="${s.settings.reminder}" data-reminder aria-label="Daily reminder time"></label><button class="ghost" data-notify>Allow notifications</button><p class="mut">Reminders arrive while Better Me is installed and the phone allows them. On iPhone, add the app to your Home Screen first.</p>`,
+    app: `<h2>Sounds and haptics</h2><label class="switch"><span>Sounds</span><input type="checkbox" data-sound ${s.settings.sound ? 'checked' : ''}></label><label class="switch"><span>Haptics</span><input type="checkbox" data-haptics ${s.settings.haptics ? 'checked' : ''}></label>`,
+    data: `<h2>Data and backup</h2><div class="field-row"><button class="ghost" data-export-json>Export JSON</button><button class="ghost" data-export-csv>Export CSV</button></div><p class="kicker">Storage</p><div class="meter" role="meter" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct}" aria-label="Storage used"><b style="width:${pct}%"></b></div><div class="row-between"><span style="font-weight:700">${kb} KB used</span><span class="mut">of 500 MB</span></div>`,
+    account: `<h2>Account</h2><div class="row-between"><span style="font-weight:700">Version</span><span class="mut">${VERSION}</span></div><button class="pill danger" data-signout>Sign out</button>`
+  }[id] || '';
+  return `<div class="sheet-card" role="document"><div class="row-between"><button class="ghost" data-settings-back>‹ Settings</button><button class="ghost" data-close>Done</button></div>${body}</div>`;
 }
+
+function refreshSettings() { sheet(settingsSection ? settingsDetail(settingsSection) : settingsSheet()); }
 
 function printSheet() {
   const keys = Object.keys(getState().days).sort();
@@ -374,7 +419,8 @@ function printSheet() {
     <label>Colour<select name="color"><option value="color">Colour</option><option value="bw">Black and white</option></select></label>
     <label class="switch"><span>Include reflections</span><input type="checkbox" name="reflect" checked></label>
     <button class="primary" type="submit">Open print preview</button>
-    <p class="mut">In the print dialog, choose "Save as PDF".</p></form>`;
+    <p class="mut">In the print dialog, choose "Save as PDF".</p>
+    <h3>Printed documents</h3>${(getState().printLog || []).length ? `<ul class="plain">${getState().printLog.slice(0, 20).map(l => `<li>${new Date(l.at).toLocaleString()} · ${esc({ sops: 'SOP history', progress: 'Progress report', profile: 'Profile' }[l.doc] || l.doc)} · ${esc(l.from)} to ${esc(l.to)}</li>`).join('')}</ul>` : '<p class="mut">Nothing printed yet.</p>'}</form>`;
 }
 
 function printDoc(f) {
@@ -394,6 +440,7 @@ function printDoc(f) {
   }
   const w = window.open('', '_blank');
   if (!w) { toast('Pop-ups are blocked. Allow them, then try again.'); return; }
+  logPrint({ doc: type, from, to, orientation: f.get('orientation') || 'portrait', font: f.get('font') || 'system', color: f.get('color') || 'color' });
   w.document.write(`<!doctype html><html><head><meta charset="utf-8"><title>Better Me</title><style>@page{size:${f.get('orientation') === 'landscape' ? 'landscape' : 'portrait'};margin:18mm}body{font-family:${fam};color:${ink};font-size:11pt;line-height:1.5;margin:0}h1{font-size:20pt;margin:0}h2{font-size:14pt;margin-top:18pt}h3{font-size:11pt;margin:14pt 0 4pt}small{color:#666;margin-left:6pt}li{margin:2pt 0}</style></head><body><h1>Better Me</h1><p>${esc(p.name)} · ${from} to ${to}</p>${body}<script>onload=()=>setTimeout(print,200)<\/script></body></html>`);
   w.document.close();
 }
@@ -443,13 +490,16 @@ document.addEventListener('click', e => {
     return;
   }
   if (t.closest('[data-signout]')) return signOut();
-  if (t.closest('[data-timer-toggle]')) return toggleTimer();
-  if (t.closest('[data-timer-finish]')) {
-    if (tm) { const { k, id } = tm; logTimer(); toggleTask(k, id); sh.innerHTML = ''; sh.classList.remove('open'); play('complete'); return render(); }
-    return;
-  }
+  if (t.closest('[data-timer-toggle]')) return toggleFocus();
   const tmBtn = t.closest('[data-timer]');
-  if (tmBtn) { const [k, id] = tmBtn.dataset.timer.split('|'); return startTimer(k, id); }
+  if (tmBtn) { const [k, id] = tmBtn.dataset.timer.split('|'); timerSheet(k, id); return; }
+  const rvOpen = t.closest('[data-review-open]');
+  if (rvOpen) { const [k, id] = rvOpen.dataset.reviewOpen.split('|'); return reviewSheet(k, id); }
+  const rv = t.closest('[data-review]');
+  if (rv) { const [outcome, k, id] = rv.dataset.review.split('|'); return doReview(outcome, k, id); }
+  const so = t.closest('[data-settings-open]');
+  if (so) return sheet(settingsDetail(so.dataset.settingsOpen));
+  if (t.closest('[data-settings-back]')) return sheet(settingsSheet());
   if (t.closest('[data-notify]')) {
     if (!('Notification' in window)) { toast('Notifications are not supported on this device.'); return; }
     Notification.requestPermission().then(p => toast(p === 'granted' ? 'Reminders are on' : 'Notifications are blocked in settings'));
@@ -461,11 +511,11 @@ document.addEventListener('click', e => {
   if (t.closest('[data-save-tpl]')) { sheet(tplSheet()); return; }
   if (t.closest('[data-export-json]')) { download('better-me-backup.json', exportJSON(), 'application/json'); return; }
   if (t.closest('[data-export-csv]')) { download('better-me-tasks.csv', exportCSV(), 'text/csv'); return; }
-  if (t.closest('[data-area-add]')) { if (addArea($('#newArea').value)) play('save'); sheet(settingsSheet()); return; }
+  if (t.closest('[data-area-add]')) { if (addArea($('#newArea').value)) play('save'); refreshSettings(); return; }
   const rmA = t.closest('[data-area-rm]');
-  if (rmA) { const n = getAreas()[Number(rmA.dataset.areaRm)]; if (removeArea(n)) play('cancel'); sheet(settingsSheet()); return; }
+  if (rmA) { const n = getAreas()[Number(rmA.dataset.areaRm)]; if (removeArea(n)) play('cancel'); refreshSettings(); return; }
   const tplRm = t.closest('[data-tpl-rm]');
-  if (tplRm) { deleteTemplate(tplRm.dataset.tplRm); sheet(settingsSheet()); return; }
+  if (tplRm) { deleteTemplate(tplRm.dataset.tplRm); refreshSettings(); return; }
   const useTpl = t.closest('[data-use-tpl]');
   if (useTpl) { const n = applyTemplate(useTpl.dataset.useTpl, todayKey()); play('save'); toast(`Added ${n} task${n === 1 ? '' : 's'} from template`); tab = 'home'; return render(); }
   const cmd = t.closest('[data-cmd]');
@@ -502,7 +552,61 @@ document.addEventListener('click', e => {
   if (th) {
     getState().settings.theme = th.dataset.themeSet;
     save(); applyTheme(); play('save');
-    return sheet(settingsSheet());
+    return refreshSettings();
+  }
+});
+
+// Every form is handled here. Native submission would reload the page and drop the action.
+document.addEventListener('submit', e => {
+  const f = e.target;
+  if (!(f instanceof HTMLFormElement)) return;
+  e.preventDefault();
+  const fd = new FormData(f);
+  const k = todayKey();
+
+  if (f.id === 'quickForm') {
+    const text = String(fd.get('text') || '').trim();
+    if (!text) return;
+    area = String(fd.get('area') || area);
+    f.reset();
+    sheet(planSheet(text));
+    return;
+  }
+  if (f.id === 'planForm') {
+    const text = String(fd.get('text') || '').trim();
+    const startNow = e.submitter?.value === 'now';
+    const start = String(fd.get('start') || '');
+    const end = String(fd.get('end') || '');
+    if (!text) { toast('Name the task first.'); return; }
+    if (!startNow && !/^\d{2}:\d{2}$/.test(start)) { toast('Set the time it starts.'); return; }
+    if (end && (startNow ? end <= new Date().toTimeString().slice(0, 5) : end <= start)) { toast('Finish time has to be after the start time.'); return; }
+    const t = addTask(k, text, area, fd.get('minutes'), start, end, startNow);
+    if (!t) return;
+    play('save');
+    tab = 'home';
+    if (startNow) { toast('Started'); sheet(''); timerSheet(k, t.id); }
+    else { toast('Planned'); sheet(''); render(); }
+    return;
+  }
+  if (f.id === 'profileForm') {
+    saveProfile(Object.fromEntries([...fd.entries()].filter(([, v]) => typeof v === 'string')));
+    play('save'); toast('Profile saved');
+    return render();
+  }
+  if (f.id === 'tplForm') {
+    const days = fd.getAll('day').map(Number);
+    if (!saveTemplate(String(fd.get('name') || ''), k, days)) { toast('Add tasks to today first, then name the template.'); return; }
+    play('save'); toast('Template saved');
+    sheet('');
+    return render();
+  }
+  if (f.id === 'obForm') {
+    setOnboarded(String(fd.get('name') || ''));
+    sheet(''); play('save');
+    return render();
+  }
+  if (f.id === 'printForm') {
+    printDoc(fd);
   }
 });
 
@@ -522,7 +626,7 @@ document.addEventListener('change', e => {
     const ok = renameArea(t.dataset.areaName, t.value.trim());
     if (!ok) toast('That name is taken or empty.');
     else play('save');
-    sheet(settingsSheet());
+    refreshSettings();
   }
 });
 
@@ -664,6 +768,9 @@ onSync(s => {
   ready = true;
   render();
   if (!getState().onboarded) sheet(onboardSheet());
+  tickTasks();
+  setInterval(liveTick, 5000);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) liveTick(); });
   setInterval(checkReminder, 30000);
   checkReminder();
   document.addEventListener('visibilitychange', () => { if (!document.hidden) checkReminder(); });
