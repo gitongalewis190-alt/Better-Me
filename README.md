@@ -1,6 +1,16 @@
-# Better Me v1.4.0
+# Better Me v1.5.0
 
 A daily SOP tracker. Plan the day, focus with a timer, swipe and reorder tasks, read your progress, search, export, and print or save a PDF.
+
+## What’s in v1.5.0
+- Task lifecycle: each task has a start time, an optional finish-by time, and minutes to spend. At the start time the timer runs on its own. When the minutes are used up, the task shows "Waiting for review" whether or not the app was open.
+- Review: tap Review, then Done, Not done, or Not done and move to tomorrow.
+- Quick add opens the same planning sheet, with a Start now option.
+- Settings are a list. Tap a row to open its settings.
+- Forms save in place. No page reloads on save.
+- Print preview works, and every printed document is logged and listed in the print sheet.
+- Responsive layout, and calmer motion (no re-running entrance animations on every update).
+- Database: run `supabase/migration_task_lifecycle.sql` once before deploying this version.
 
 ## What’s in v1.4.0
 - Per-task sync: every task is stored as its own row, so two devices no longer overwrite each other’s whole day. Tasks changed on one device appear on the other after a pull or a reload.
@@ -38,13 +48,13 @@ A daily SOP tracker. Plan the day, focus with a timer, swipe and reorder tasks, 
 ```sql
 create table if not exists public.better_me_state (
   user_id uuid primary key references auth.users(id) on delete cascade,
-  data jsonb not null default ‘{}’::jsonb,
+  data jsonb not null default '{}'::jsonb,
   updated_at timestamptz not null default now()
 );
 alter table public.better_me_state enable row level security;
-create policy “own row select” on public.better_me_state for select to authenticated using (auth.uid() = user_id);
-create policy “own row insert” on public.better_me_state for insert to authenticated with check (auth.uid() = user_id);
-create policy “own row update” on public.better_me_state for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+create policy "own row select" on public.better_me_state for select to authenticated using (auth.uid() = user_id);
+create policy "own row insert" on public.better_me_state for insert to authenticated with check (auth.uid() = user_id);
+create policy "own row update" on public.better_me_state for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
 ```
 
 2. Authentication → URL Configuration: Site URL `https://better-me-ashen.vercel.app`; add `https://better-me-ashen.vercel.app/**` to Redirect URLs.
