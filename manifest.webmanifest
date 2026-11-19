@@ -1,16 +1,26 @@
 {
   "name": "Better Me",
   "short_name": "Better Me",
-  "description": "Plan your day, check it off, see your progress.",
+  "description": "Plan your day, focus, build habits, and review how you are really doing.",
+  "id": "./app.html",
   "start_url": "./app.html",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#f4f3ef",
-  "theme_color": "#f4f3ef",
+  "display_override": ["window-controls-overlay", "standalone"],
+  "orientation": "any",
+  "background_color": "#0b0b10",
+  "theme_color": "#0b0b10",
+  "categories": ["productivity", "lifestyle", "education"],
   "icons": [
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
-    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+    { "src": "icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" },
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
   ],
-  "version": "1.4.0"
+  "shortcuts": [
+    { "name": "Today", "url": "./app.html#today" },
+    { "name": "Focus", "url": "./app.html#focus" },
+    { "name": "Insights", "url": "./app.html#insights" }
+  ],
+  "version": "2.0.0"
 }

@@ -1,73 +1,46 @@
-# Better Me v1.5.0
+# Better Me 2.0
 
-A daily SOP tracker. Plan the day, focus with a timer, swipe and reorder tasks, read your progress, search, export, and print or save a PDF.
+Plan the day in plain words, focus with timers that run themselves, build habits, journal, track mood and sleep, and export a beautiful PDF review of any period. Works on phone, tablet and laptop, online or offline, with or without an account.
 
-## What’s in v1.5.0
-- Task lifecycle: each task has a start time, an optional finish-by time, and minutes to spend. At the start time the timer runs on its own. When the minutes are used up, the task shows "Waiting for review" whether or not the app was open.
-- Review: tap Review, then Done, Not done, or Not done and move to tomorrow.
-- Quick add opens the same planning sheet, with a Start now option.
-- Settings are a list. Tap a row to open its settings.
-- Forms save in place. No page reloads on save.
-- Print preview works, and every printed document is logged and listed in the print sheet.
-- Responsive layout, and calmer motion (no re-running entrance animations on every update).
-- Database: run `supabase/migration_task_lifecycle.sql` once before deploying this version.
+Live: https://better-me-ashen.vercel.app
 
-## What’s in v1.4.0
-- Per-task sync: every task is stored as its own row, so two devices no longer overwrite each other’s whole day. Tasks changed on one device appear on the other after a pull or a reload.
-- Conflicts on the same task: the newer edit wins. Offline changes are kept on the phone and sent when it reconnects.
+## What's new in 2.0 (rebuilt from the ground up)
+1. **New design system** — aurora/mesh/paper/plain backgrounds, glass cards, hover spotlight, tooltips, spring animations, view transitions. Phone (bottom bar + FAB), tablet (icon rail), laptop (sidebar), wide screens (summary column).
+2. **PDF review report** — pick any period (7/30/90 days, month, year, all, custom), choose sections, theme or print look, A4/Letter, portrait/landscape. Cover with your profile, photo and the app icon in your accent; theme swatches; performance; app usage; charts; algorithms; habits; mood/sleep; goals; achievements; every task per day; journal; focus sessions; full settings snapshot. Download as PDF, print, or share.
+3. **Performance score** — composite 0–100 + grade, weekly trend (least-squares), consistency index, comparison with the previous period.
+4. **App-usage tracking** — days opened, sessions, time in app, most-used views and features.
+5. **Natural-language quick add** — `Gym 6-7pm tomorrow #Personal !high`.
+6. **Day timeline** — time blocks, overlaps side by side, tap an hour to plan, live “now” line.
+7. **Smart slot suggestion** — finds a free gap near your peak hour.
+8. **Pomodoro focus** — work/short/long cycles that survive reloads, attach to a task, logs sessions.
+9. **Soundscapes** — rain, ocean, brown/pink/white noise generated live.
+10. **Zen mode** — full-screen breathing timer.
+11. **Habit tracker** — per-weekday habits, streaks, 7-day grid, 30-day rate.
+12. **Mood, energy, sleep, water check-in** — with mood × output correlation.
+13. **Journal** — prompt, reflection, three good things, notes, past entries.
+14. **Long-term goals** — deadlines, reasons, milestones, celebrations.
+15. **Task details** — priority, notes, checklists, duplicate, move to any day, +5/+15 min.
+16. **Recurring tasks** — repeat on chosen weekdays.
+17. **Levels, XP and 16 badges**, plus a daily “surprise” fact mined from your data.
+18. **Command palette** (⌘/Ctrl K) and keyboard shortcuts (N, 1–9, Space, Z, E, T, “,”, ?).
+19. **Personalisation** — auto/light/dark, 9 accents, density, text size, high contrast, reduced motion, 12h clock, category colours.
+20. **App lock PIN**, **guest mode** (no account needed; data moves into your account on sign-up), magic-link sign-in, password reset.
+21. **Import/restore JSON, CSV (Excel), calendar .ics export.**
+22. **Smart alerts** — notify when tasks start, time is up, focus sessions end; daily reminder.
 
-## What’s in v1.3.0
-- Swipe a task right to complete, left to delete (with undo).
-- Drag the ⋮⋮ handle to reorder tasks within a day.
-- Pull down at the top of the page to refresh from the cloud.
-- Haptic feedback on save, complete, and cancel where the device supports it. Toggle in Settings.
-- Weekly templates: choose days when saving a template, and it applies itself on those days.
-- Daily reminder: set a time in Settings and allow notifications.
-- Accessibility pass: labelled controls, dialog roles, focus outlines, a skip link, 44px touch targets, and reduced-motion support.
-- iOS splash screens for common iPhone sizes, plus app icons (192, 512, 180).
-- Earlier: focus timer, start times, templates, weekly goals, weekly review, onboarding, undo, sync indicator, command bar (Ctrl/⌘ K or “/“), categories, JSON and CSV export, plain-language sign-in errors, password reset, offline fallback.
-
-## Notes on reminders
-- Reminders fire while the app is open, or when the phone wakes the installed app. True background push needs a server and is not built yet.
-- On iPhone, notifications only work for apps added to the Home Screen (iOS 16.4 or later).
+Kept from 1.x: per-task cloud sync with conflict handling, offline queue, swipe to complete/delete, drag to reorder, pull to refresh, templates, weekly goals, forecast/rhythm/capacity algorithms.
 
 ## Structure
-- `index.html` landing, `lab.html` sign in, `app.html` app shell (signed-in only)
-- `app.js` UI, gestures, reorder, reminders; `styles.css` theme, layout, motion
-- `sw.js` offline fallback and notification click handling
-- `manifest.webmanifest`, `icon.svg`, `icon-192.png`, `icon-512.png`, `apple-touch-icon.png`, `splash-*.png`
-- `src/config.js` Supabase URL and public anon key
-- `src/supabase.js` shared client; `src/auth.js` sign in, sign up, reset, sign out, plain errors
-- `src/store.js` per-user state, sync, categories, goals, templates, schedules, reminders, export
-- `src/analytics.js` streaks, weekly summary, goal progress; `src/algorithms.js` forecast, rhythm, capacity
-- `src/prompts.js` reflection prompts; `src/sound.js` sounds and haptics
+- `index.html` landing · `lab.html` sign in / guest · `app.html` app shell
+- `app.js` UI, views, sheets, gestures, focus timer, report UI
+- `styles.css` design system
+- `src/store.js` state, sync, lifecycle, habits, goals, usage · `src/analytics.js` stats, scores, badges · `src/algorithms.js` forecast, rhythm, capacity, slot finder
+- `src/report.js` PDF report · `src/charts.js` SVG charts · `src/theme.js` themes + icon · `src/nlp.js` quick-add parser · `src/sound.js` sounds + soundscapes
+- `vendor/` Supabase client, jsPDF, html2canvas (vendored, no CDN needed, works offline)
+- `sw.js` offline cache · `manifest.webmanifest` + PNG icons
 
-## Setup
-1. Supabase → SQL Editor, run once (already applied to the Better-Me project):
+## Database
+No schema change is required for 2.0 — new data lives in `better_me_state.data`. To verify/harden the database, see `Supabase/HANDOFF_FOR_CLAUDE.md` and run `Supabase/migration_v2_0.sql`.
 
-```sql
-create table if not exists public.better_me_state (
-  user_id uuid primary key references auth.users(id) on delete cascade,
-  data jsonb not null default '{}'::jsonb,
-  updated_at timestamptz not null default now()
-);
-alter table public.better_me_state enable row level security;
-create policy "own row select" on public.better_me_state for select to authenticated using (auth.uid() = user_id);
-create policy "own row insert" on public.better_me_state for insert to authenticated with check (auth.uid() = user_id);
-create policy "own row update" on public.better_me_state for update to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
-```
-
-2. Authentication → URL Configuration: Site URL `https://better-me-ashen.vercel.app`; add `https://better-me-ashen.vercel.app/**` to Redirect URLs.
-3. Authentication → Email templates: the reset link goes to `lab.html`.
-4. Deploy on Vercel from the GitHub repo, no build step.
-
-## Keys
-- `src/config.js` holds only the public URL and anon key. Row Level Security protects the data.
-- Never commit the `service_role` key or the database password.
-
-## Not yet built
-- Profile photos in Supabase Storage (kept inside the record, so keep them small).
-- Real Supabase storage usage (the meter estimates from data size).
-- Background push notifications (needs a server).
-- Full time-block timeline (start times show in lists only).
-- Swahili (deferred).
+## Deploy
+Static site on Vercel from this repo, no build step. Never commit the `service_role` key or DB password; `src/config.js` holds only the public anon key (RLS protects data).

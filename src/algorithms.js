@@ -89,3 +89,32 @@ export function insights(areas) {
     capacity: Object.fromEntries(areas.map(a => [a, capacity(a)]))
   };
 }
+
+// 4. Slot finder
+// First free gap of the given length on a day, between now (or 06:00) and 23:00,
+// preferring the window around the person's peak hour when one is known.
+export function suggestSlot(k, minutes = 30, today = false) {
+  const d = getState().days[k];
+  const busy = (d?.tasks || []).filter(t => t.startTime && !t.done).map(t => {
+    const [h, m] = t.startTime.split(':').map(Number);
+    const s = h * 60 + m;
+    let e = s + (t.minutes || 30);
+    if (t.endTime) { const [eh, em] = t.endTime.split(':').map(Number); e = Math.max(e, eh * 60 + em); }
+    return [s, e];
+  }).sort((a, b) => a[0] - b[0]);
+  const now = new Date();
+  let from = today ? Math.ceil((now.getHours() * 60 + now.getMinutes() + 5) / 15) * 15 : 6 * 60;
+  from = Math.max(from, 6 * 60);
+  const gaps = [];
+  let cur = from;
+  for (const [s, e] of busy) {
+    if (s - cur >= minutes) gaps.push(cur);
+    cur = Math.max(cur, e);
+  }
+  if (23 * 60 - cur >= minutes) gaps.push(cur);
+  if (!gaps.length) return null;
+  const peak = chronotype().peak;
+  const best = peak == null ? gaps[0] : gaps.sort((a, b) => Math.abs(a / 60 - peak) - Math.abs(b / 60 - peak))[0];
+  const p = n => String(n).padStart(2, '0');
+  return `${p(Math.floor(best / 60))}:${p(best % 60)}`;
+}

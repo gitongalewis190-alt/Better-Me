@@ -3,115 +3,131 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#fbfaf7">
-  <title>Lab · Better Me</title>
+  <meta name="theme-color" content="#0b0b10">
+  <title>Sign in · Better Me</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <style>
-    :root{--bg:#fbfaf7;--card:#ffffff;--ink:#1d1d1f;--mut:#5c5a54;--ok:#c96442;--line:#e6e1d6;color-scheme:light}
-    @media (prefers-color-scheme:dark){:root{--bg:#141412;--card:#1d1c19;--ink:#f3efe8;--mut:#aca79c;--line:#2c2a25;color-scheme:dark}}
+    :root{--bg:#f5f4f0;--card:rgba(255,255,255,.82);--ink:#15151b;--mut:#5d5d68;--line:#e5e3eb;--acc:#ff5a36;--acc2:#ff9a3c;color-scheme:light}
+    @media (prefers-color-scheme:dark){:root{--bg:#0b0b10;--card:rgba(24,24,33,.78);--ink:#f4f4f8;--mut:#a3a3b2;--line:#2a2a36;color-scheme:dark}}
     *{box-sizing:border-box}
-    html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font:16px/1.5 -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif}
-    body{min-height:100vh;display:grid;place-items:center;padding:calc(env(safe-area-inset-top) + 24px) 20px calc(env(safe-area-inset-bottom) + 24px)}
-    .card{width:100%;max-width:380px;background:var(--card);border:1px solid var(--line);border-radius:26px;padding:28px;box-shadow:0 12px 40px rgba(0,0,0,.06);animation:rise .45s cubic-bezier(.2,.8,.2,1) both}
-    @keyframes rise{from{opacity:0;transform:translateY(12px)}to{opacity:1;transform:none}}
-    .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
-    .back{color:var(--mut);text-decoration:none;font-size:24px;line-height:1;padding:4px}
-    h1{margin:0;font-size:28px;font-weight:800;letter-spacing:-.02em}
-    .seg{display:grid;grid-template-columns:1fr 1fr;background:var(--bg);border-radius:14px;padding:4px;margin-bottom:20px}
-    .seg button{border:0;background:none;padding:10px;border-radius:11px;cursor:pointer;color:var(--mut);font:inherit;font-size:15px;font-weight:600}
-    .seg button.on{background:var(--card);color:var(--ink);font-weight:800;box-shadow:0 2px 8px rgba(0,0,0,.08)}
-    form{display:grid;gap:12px}
-    input{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:14px}
-    input:focus{outline:2px solid var(--ok);outline-offset:0;border-color:transparent}
-    .primary{margin-top:6px;border:0;background:var(--ink);color:var(--bg);border-radius:999px;padding:15px;font:inherit;font-weight:800;font-size:16px;cursor:pointer}
-    .primary:disabled{opacity:.5;cursor:default}
-    .link{justify-self:center;border:0;background:none;color:var(--ok);font:inherit;font-weight:700;cursor:pointer;padding:6px}
-    #msg{min-height:1.5em;margin:4px 0 0;color:var(--mut);font-size:14px;text-align:center}
-    #msg.ok{color:var(--ok);font-weight:700}
+    html,body{margin:0;min-height:100%;background:var(--bg);color:var(--ink);font:16px/1.5 Inter,-apple-system,system-ui,sans-serif;-webkit-font-smoothing:antialiased}
+    body{min-height:100dvh;display:grid;place-items:center;padding:calc(env(safe-area-inset-top) + 24px) 18px calc(env(safe-area-inset-bottom) + 24px);overflow-x:hidden}
+    .fx{position:fixed;inset:0;z-index:-1;overflow:hidden}
+    .fx i{position:absolute;border-radius:50%;filter:blur(70px);opacity:.55;animation:d 18s ease-in-out infinite alternate}
+    .fx i:nth-child(1){width:60vmax;height:60vmax;left:-20vmax;top:-25vmax;background:radial-gradient(circle,var(--acc),transparent 65%)}
+    .fx i:nth-child(2){width:50vmax;height:50vmax;right:-20vmax;bottom:-20vmax;background:radial-gradient(circle,#7c5cff,transparent 65%);animation-delay:-6s}
+    @keyframes d{to{transform:translate(5vw,6vh) scale(1.1)}}
+    .card{width:100%;max-width:400px;background:var(--card);backdrop-filter:blur(24px) saturate(1.6);-webkit-backdrop-filter:blur(24px) saturate(1.6);border:1px solid var(--line);border-radius:28px;padding:30px;box-shadow:0 30px 60px -20px rgba(0,0,0,.25);animation:rise .6s cubic-bezier(.2,.8,.2,1) both}
+    @keyframes rise{from{opacity:0;transform:translateY(16px) scale(.98)}}
+    .brand{display:flex;align-items:center;gap:12px;margin-bottom:22px;text-decoration:none;color:inherit}
+    .brand img{width:44px;height:44px;border-radius:13px;box-shadow:0 10px 20px -8px rgba(0,0,0,.4)}
+    .brand b{display:block;font-size:1.15rem;letter-spacing:-.02em}.brand small{color:var(--mut);font-size:.8rem}
+    h1{margin:0 0 4px;font-size:1.75rem;letter-spacing:-.03em}
+    .sub{margin:0 0 20px;color:var(--mut);font-size:.92rem}
+    .seg{display:grid;grid-template-columns:1fr 1fr;background:rgba(127,127,140,.12);border-radius:14px;padding:4px;margin-bottom:18px}
+    .seg button{border:0;background:none;padding:9px;border-radius:11px;cursor:pointer;color:var(--mut);font:inherit;font-size:.9rem;font-weight:650;transition:all .2s}
+    .seg button.on{background:var(--bg);color:var(--ink);box-shadow:0 2px 8px rgba(0,0,0,.1)}
+    form{display:grid;gap:11px}
+    input{width:100%;font:inherit;color:var(--ink);background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:14px 15px;outline:none;transition:border-color .2s,box-shadow .2s}
+    input:focus{border-color:var(--acc);box-shadow:0 0 0 4px color-mix(in srgb,var(--acc) 16%,transparent)}
+    .pw{position:relative}.pw button{position:absolute;right:8px;top:50%;transform:translateY(-50%);border:0;background:none;color:var(--mut);font:inherit;font-size:.78rem;font-weight:700;cursor:pointer;padding:8px}
+    .primary{margin-top:4px;border:0;border-radius:14px;padding:15px;font:inherit;font-weight:750;color:#fff;cursor:pointer;background:linear-gradient(135deg,var(--acc),var(--acc2));box-shadow:0 12px 24px -12px var(--acc);transition:transform .25s cubic-bezier(.34,1.56,.64,1)}
+    .primary:hover{transform:translateY(-2px)}.primary:active{transform:scale(.97)}.primary:disabled{opacity:.6;cursor:progress;transform:none}
+    .alt{display:grid;gap:8px;margin-top:14px}
+    .ghost{border:1px solid var(--line);background:var(--bg);color:var(--ink);border-radius:14px;padding:13px;font:inherit;font-weight:650;cursor:pointer;transition:border-color .2s,transform .2s}
+    .ghost:hover{border-color:var(--acc);transform:translateY(-1px)}
+    .or{display:flex;align-items:center;gap:10px;color:var(--mut);font-size:.78rem;margin:16px 0 2px}.or::before,.or::after{content:"";flex:1;height:1px;background:var(--line)}
+    .link{justify-self:center;border:0;background:none;color:var(--acc);font:inherit;font-size:.86rem;font-weight:700;cursor:pointer;padding:6px}
+    #msg{min-height:1.4em;margin:6px 0 0;color:var(--mut);font-size:.88rem;text-align:center}
+    #msg.ok{color:#18b26b;font-weight:700}#msg.err{color:#e5484d;font-weight:600}
+    .fine{color:var(--mut);font-size:.75rem;text-align:center;margin:14px 0 0}
   </style>
+  <script src="vendor/supabase.js"></script>
 </head>
 <body>
+  <div class="fx" aria-hidden="true"><i></i><i></i></div>
   <main class="card">
-    <div class="top">
-      <a class="back" href="index.html" aria-label="Back to home">‹</a>
-      <h1 id="title">Sign in</h1>
-      <span style="width:24px"></span>
-    </div>
-    <div class="seg" role="tablist">
+    <a class="brand" href="index.html"><img src="icon.svg" alt=""><div><b>Better Me</b><small>Plan · Focus · Review</small></div></a>
+    <h1 id="title">Welcome back</h1>
+    <p class="sub" id="subt">Sign in to sync across your phone, tablet and laptop.</p>
+    <div class="seg" role="tablist" id="seg">
       <button id="m-in" class="on" type="button" role="tab" aria-selected="true">Sign in</button>
       <button id="m-up" type="button" role="tab" aria-selected="false">Create account</button>
     </div>
     <form id="f" novalidate>
       <input name="email" type="email" required placeholder="Email" autocomplete="email" aria-label="Email">
-      <input name="password" type="password" required minlength="6" placeholder="Password" autocomplete="current-password" aria-label="Password">
+      <div class="pw"><input name="password" type="password" required minlength="6" placeholder="Password" autocomplete="current-password" aria-label="Password"><button type="button" id="show">Show</button></div>
       <button id="go" class="primary" type="submit">Sign in</button>
       <button id="forgot" class="link" type="button">Forgot password?</button>
       <p id="msg" role="status" aria-live="polite"></p>
     </form>
+    <div class="or">or</div>
+    <div class="alt">
+      <button class="ghost" id="magic" type="button">✉️ Email me a sign-in link</button>
+      <button class="ghost" id="guest" type="button">Continue without an account →</button>
+    </div>
+    <p class="fine">Guest mode keeps data on this device. Create an account any time to move it to the cloud.</p>
   </main>
-
   <script type="module">
-    import { currentUser, signIn, signUp, resetPassword, friendlyError } from './src/auth.js';
-
-    if (await currentUser()) location.replace('app.html');
-
-    const f = document.getElementById('f');
-    const msg = document.getElementById('msg');
-    const go = document.getElementById('go');
+    import { currentUser, signIn, signUp, resetPassword, magicLink, updatePassword, friendlyError, enterGuest, leaveGuest } from './src/auth.js';
+    import { hasCloud } from './src/supabase.js';
+    const $ = id => document.getElementById(id);
+    const f = $('f'), msg = $('msg'), go = $('go');
+    const params = new URLSearchParams(location.search);
+    const isReset = params.has('reset') || location.hash.includes('type=recovery');
     let mode = 'in';
+    const say = (t, cls = '') => { msg.textContent = t; msg.className = cls; };
+
+    if (!isReset && !params.has('from') && await currentUser()) location.replace('app.html');
+    if (!hasCloud) say('Cloud sign-in could not load. You can continue without an account.', 'err');
 
     function setMode(m) {
       mode = m;
-      document.getElementById('m-in').classList.toggle('on', m === 'in');
-      document.getElementById('m-up').classList.toggle('on', m === 'up');
-      document.getElementById('m-in').setAttribute('aria-selected', m === 'in');
-      document.getElementById('m-up').setAttribute('aria-selected', m === 'up');
-      document.getElementById('title').textContent = m === 'in' ? 'Sign in' : 'Create account';
-      go.textContent = m === 'in' ? 'Sign in' : 'Create account';
+      $('m-in').classList.toggle('on', m === 'in'); $('m-up').classList.toggle('on', m === 'up');
+      $('m-in').setAttribute('aria-selected', m === 'in'); $('m-up').setAttribute('aria-selected', m === 'up');
+      $('title').textContent = m === 'in' ? 'Welcome back' : m === 'up' ? 'Create your account' : 'Set a new password';
+      go.textContent = m === 'in' ? 'Sign in' : m === 'up' ? 'Create account' : 'Save new password';
       f.password.autocomplete = m === 'in' ? 'current-password' : 'new-password';
-      msg.textContent = '';
-      msg.className = '';
+      say('');
     }
+    if (isReset) { setMode('reset'); $('seg').hidden = true; f.email.hidden = true; $('forgot').hidden = true; $('subt').textContent = 'Choose a password with at least 6 characters.'; }
+    if (params.get('from') === 'guest') { setMode('up'); $('subt').textContent = 'Your guest data will be moved into your new account.'; }
+    $('m-in').onclick = () => setMode('in');
+    $('m-up').onclick = () => setMode('up');
+    $('show').onclick = () => { const p = f.password; p.type = p.type === 'password' ? 'text' : 'password'; $('show').textContent = p.type === 'password' ? 'Show' : 'Hide'; };
+    $('guest').onclick = () => { enterGuest(); location.replace('app.html'); };
 
-    document.getElementById('m-in').onclick = () => setMode('in');
-    document.getElementById('m-up').onclick = () => setMode('up');
-
-    document.getElementById('forgot').onclick = async () => {
+    $('forgot').onclick = async () => {
       const email = f.email.value.trim();
-      if (!email) { msg.textContent = 'Enter your email above first.'; return; }
-      try {
-        await resetPassword(email);
-        msg.className = 'ok';
-        msg.textContent = 'Check your email for a reset link.';
-      } catch (err) {
-        msg.className = '';
-        msg.textContent = friendlyError(err);
-      }
+      if (!email) return say('Enter your email above first.', 'err');
+      try { await resetPassword(email); say('Check your email for a reset link.', 'ok'); } catch (err) { say(friendlyError(err), 'err'); }
+    };
+    $('magic').onclick = async () => {
+      const email = f.email.value.trim();
+      if (!email) { f.email.focus(); return say('Enter your email above, then tap this again.', 'err'); }
+      try { await magicLink(email); say('Link sent. Open it on this device to sign in.', 'ok'); } catch (err) { say(friendlyError(err), 'err'); }
     };
 
     f.onsubmit = async e => {
       e.preventDefault();
-      if (!f.reportValidity()) return;
-      const email = f.email.value.trim();
-      const password = f.password.value;
-      go.disabled = true;
-      go.textContent = mode === 'in' ? 'Signing in…' : 'Creating…';
-      msg.textContent = '';
-      msg.className = '';
+      const email = f.email.value.trim(), password = f.password.value;
+      if (mode !== 'reset' && !email) return say('Enter your email.', 'err');
+      if (password.length < 6) return say('Use a password of at least 6 characters.', 'err');
+      const label = go.textContent;
+      go.disabled = true; go.textContent = 'One moment…'; say('');
       try {
-        if (mode === 'in') {
-          await signIn(email, password);
-          location.replace('app.html');
-        } else {
+        if (mode === 'reset') { await updatePassword(password); say('Password updated. Opening the app…', 'ok'); setTimeout(() => location.replace('app.html'), 900); }
+        else if (mode === 'in') { await signIn(email, password); leaveGuest(); location.replace('app.html'); }
+        else {
           const { session } = await signUp(email, password);
-          if (session) location.replace('app.html');
-          else { msg.className = 'ok'; msg.textContent = 'Check your email to confirm, then sign in.'; }
+          if (session) { leaveGuest(); location.replace('app.html'); }
+          else say('Check your email to confirm, then sign in.', 'ok');
         }
-      } catch (err) {
-        msg.textContent = friendlyError(err);
-      } finally {
-        go.disabled = false;
-        go.textContent = mode === 'in' ? 'Sign in' : 'Create account';
-      }
+      } catch (err) { say(friendlyError(err), 'err'); }
+      finally { go.disabled = false; go.textContent = label; }
     };
   </script>
 </body>
